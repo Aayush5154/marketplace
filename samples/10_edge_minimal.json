@@ -1,0 +1,9 @@
+{
+  "title": "Steel wall lock",
+  "description": "Small steel wall lock with two keys, good for home and office use daily. Rust free body.",
+  "category": "Home & Kitchen",
+  "price": "0.01",
+  "attributes": {"brand": "SecureX", "material": "Steel", "dimensions": "10 x 5 x 3 cm", "condition": "New"},
+  "seller": "SecureX Store",
+  "tags": ["lock"]
+}

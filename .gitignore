@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+data/reviews.db
+data/bm25.pkl
+node_modules/
+frontend/dist/
+.pytest_cache/

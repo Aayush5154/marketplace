@@ -1,0 +1,9 @@
+{
+  "title": "Refurbished Laptop 15 inch, 8GB RAM for Office Work",
+  "description": "Refurbished laptop with 8GB RAM and 256GB SSD, good for office work and study. Battery holds about 4 hours. Call 9876543210 or mail seller@example.com for the lowest price today.",
+  "category": "Electronics",
+  "price": "18999.00",
+  "attributes": {"brand": "Lenovo", "model": "ThinkPad T480", "condition": "Refurbished", "warranty": "3 months"},
+  "seller": "City Gadgets",
+  "tags": ["laptop", "refurbished"]
+}

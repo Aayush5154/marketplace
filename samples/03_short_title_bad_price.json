@@ -1,0 +1,9 @@
+{
+  "title": "Headphones",
+  "description": "Good headphones for music and calls with mic and long battery backup for daily use at home.",
+  "category": "Electronics",
+  "price": "$49.999",
+  "attributes": {"brand": "X", "model": "H-1", "condition": "New", "warranty": "6 months"},
+  "seller": "City Gadgets",
+  "tags": ["headphones"]
+}
