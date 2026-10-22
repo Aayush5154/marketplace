@@ -47,7 +47,6 @@ They are only signals for RAG + LLM review.
 import re
 from difflib import SequenceMatcher
 
-
 # ============================================================
 # POLICY CONSTANTS
 # ============================================================

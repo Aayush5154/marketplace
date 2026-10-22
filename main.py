@@ -1,10 +1,9 @@
 import json
-import os
 import pickle
 
-from pro.semantic import SemanticSearch
+from llm.chat import format_context, generate_answer, review_listing_with_ai
 from pro.hybrid import CombinedSearch
-from llm.chat import generate_answer, format_context, review_listing_with_ai
+from pro.semantic import SemanticSearch
 
 SAMPLE_LISTING = {
     "title": "BEST EVER Headphones!!! LIMITED TIME SALE",

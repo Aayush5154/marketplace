@@ -32,7 +32,6 @@ def test_review_flow_and_audit_log(tmp_path):
 
 
 def test_decision_validation(tmp_path):
-    import pytest
     conn = _db(tmp_path)
     try:
         store.log_decision(conn, 1, 1, "title", "a", "b", "", "approve", None)

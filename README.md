@@ -205,7 +205,7 @@ from retrieval through to the final finding count without reading code.
 ## 2. Setup
 
 ```bash
-pip install -r requirements.txt
+uv sync
 cp .env.example .env    # fill PINECONE_API_KEY, PINECONE_INDEX, GROQ_API_KEY
 cd frontend && npm install
 ```
@@ -263,7 +263,7 @@ tests/              pytest suite
 ## 7. Tests
 
 ```bash
-python -m pytest tests -q    # 19 tests, no API keys required
+uv run pytest tests/ -q    # 19 tests, no API keys required
 ```
 
 - `tests/test_validator.py` — clean listing passes; required fields, price format,
@@ -274,6 +274,17 @@ python -m pytest tests -q    # 19 tests, no API keys required
 - `tests/test_backend.py` — attribute parsing, self-review block, outcome from
   decisions, revised-text builder (undecided fields stay original; approved AI
   finding uses the AI revision), `ai_revisions` round-trip, endpoint guards
+
+## 7b. Lint
+
+```bash
+uv run ruff check .      # lint only
+uv run ruff check --fix .  # auto-fix safe issues
+uv run ruff format .     # format code
+```
+
+Configuration is in `pyproject.toml` under `[tool.ruff]` and `[tool.ruff.format]`.
+Uses line-length 100, double quotes, and targets Python 3.11+.
 
 ## 8. Completed scope
 

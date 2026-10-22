@@ -17,7 +17,7 @@ reviewer name, action (approve / edit / reject), timestamp.
 import json
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import wraps
 from pathlib import Path
 
@@ -92,7 +92,7 @@ def _sync(fn):
 
 
 def _now():
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def get_db(path=DEFAULT_DB):
@@ -302,7 +302,8 @@ def get_decisions(conn, listing_id=None):
 
 if __name__ == "__main__":
     # Tiny self-check: append-only audit log + outcome rules.
-    import tempfile, os
+    import os
+    import tempfile
     tmp = os.path.join(tempfile.gettempdir(), "reviewer_selfcheck.db")
     if os.path.exists(tmp):
         os.remove(tmp)

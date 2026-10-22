@@ -1,6 +1,8 @@
 from collections import defaultdict
+
 from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain_core.documents import Document
+
 
 def load_documents(folder):
     """
@@ -23,7 +25,7 @@ def load_documents(folder):
         merged_metadata = pgs[0].metadata.copy() if pgs else {}
         merged_metadata["num_pages"] = len(pgs)
         merged_metadata.pop("page", None)
-        
+
         docs.append(
             Document(
                 page_content=full_text,

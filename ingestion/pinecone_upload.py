@@ -1,5 +1,6 @@
-import config
 from langchain_pinecone import PineconeVectorStore
+
+import config
 from ingestion.embedder import get_embedding_model
 
 

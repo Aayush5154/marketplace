@@ -2,8 +2,8 @@ import os
 import pickle
 from collections import Counter
 
-from ingestion.pdf_loader import load_documents
 from ingestion.chunker import chunk_documents
+from ingestion.pdf_loader import load_documents
 from ingestion.pinecone_upload import upload
 from pro.keyword_based import KeywordSearchBM25
 

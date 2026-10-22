@@ -8,7 +8,7 @@ import time
 from langchain_groq import ChatGroq
 
 from config import GROQ_API_KEY
-from validator import run_all_checks, find_model_triggers
+from validator import find_model_triggers, run_all_checks
 
 MODEL_NAME = "openai/gpt-oss-20b"
 

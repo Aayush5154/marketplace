@@ -3,13 +3,13 @@
 import json
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 class JsonFormatter(logging.Formatter):
     def format(self, record):
         payload = {
-            "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "ts": datetime.now(UTC).isoformat(timespec="seconds"),
             "level": record.levelname,
             "logger": record.name,
             "event": getattr(record, "event", record.getMessage()),

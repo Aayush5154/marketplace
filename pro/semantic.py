@@ -1,7 +1,7 @@
 from langchain_pinecone import PineconeVectorStore
 
-from ingestion.embedder import get_embedding_model
 from config import PINECONE_INDEX
+from ingestion.embedder import get_embedding_model
 
 
 class SemanticSearch:

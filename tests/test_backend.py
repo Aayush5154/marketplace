@@ -55,6 +55,7 @@ def test_ai_revision_round_trip(tmp_path):
 def test_endpoints_guard_without_models():
     import pytest
     from fastapi import HTTPException
+
     from backend import app as app_module
     assert app_module._state["loaded"] is False
     for guarded in (app_module.require_models,):

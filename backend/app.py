@@ -1,6 +1,5 @@
 """FastAPI backend: deterministic checks + RAG/AI review + review workflow."""
 
-import json
 import logging
 import os
 import pickle

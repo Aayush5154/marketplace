@@ -1,7 +1,9 @@
 import re
+
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from config import CHUNK_SIZE, CHUNK_OVERLAP
+
+from config import CHUNK_OVERLAP, CHUNK_SIZE
 
 # ------------------------------------------------------------------
 # Fallback splitter for non-policy, non-email PDFs

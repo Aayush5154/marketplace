@@ -1,5 +1,6 @@
-from rank_bm25 import BM25Okapi
 import nltk
+from rank_bm25 import BM25Okapi
+
 try:
     nltk.data.find("tokenizers/punkt")
 except LookupError:
