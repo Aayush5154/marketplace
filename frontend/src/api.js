@@ -36,6 +36,7 @@ export const api = {
   listDecisions: (listingId) =>
     call(listingId ? `/api/decisions?listing_id=${listingId}` : "/api/decisions"),
   decide: (body) => call("/api/decisions", { method: "POST", body: JSON.stringify(body) }),
+  auditVerify: () => call("/api/audit/verify"),
   ask: (body) => call("/api/ask", { method: "POST", body: JSON.stringify(body) }),
 };
 

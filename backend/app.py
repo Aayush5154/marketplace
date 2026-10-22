@@ -6,7 +6,7 @@ import pickle
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 import store
 from app_logging import setup as setup_logging
@@ -40,6 +40,7 @@ CHECK_FIELD = {
     "near_duplicate": "title",
     "keyword_stuffing": "title",
     "caps_and_symbols": "title",
+    "prompt_injection": "description",
 }
 
 app = FastAPI(title="Marketplace Listing Quality Reviewer")
@@ -63,7 +64,10 @@ def get_conn():
 
 def require_models():
     if not _state["loaded"]:
-        raise HTTPException(status_code=409, detail="Models not initialized. Call POST /api/init first.")
+        raise HTTPException(
+            status_code=409,
+            detail="Models not initialized. Call POST /api/init first.",
+        )
 
 
 def parse_attributes(text):
@@ -86,13 +90,18 @@ def field_text(listing, field):
 
 
 def is_self_review(reviewer, seller):
-    return bool(reviewer.strip()) and reviewer.strip().lower() == str(seller or "").strip().lower()
+    def normalize(value):
+        return " ".join(str(value or "").split()).casefold()
+
+    return bool(normalize(reviewer)) and normalize(reviewer) == normalize(seller)
 
 
 def current_outcome(finding_rows, decisions):
     items = [
-        {"severity": f.get("severity", "Major"),
-         "resolved": decisions.get(f["id"], {}).get("action") in ("approve", "edit")}
+        {
+            "severity": f.get("severity", "Major"),
+            "resolved": decisions.get(f["id"], {}).get("action") in ("approve", "edit"),
+        }
         for f in finding_rows
     ]
     return store.compute_outcome(items) if items else "Approved"
@@ -145,13 +154,17 @@ def serialize_retrieved(retrieved):
     out = []
     for score, item in retrieved or []:
         meta = item_meta(item)
-        out.append({
-            "score": score if isinstance(score, (int, float)) else None,
-            "via": item.get("via", "direct") if isinstance(item, dict) else "direct",
-            "label": meta.get("rule_id") or meta.get("chunk_type") or "chunk",
-            "text": item_text(item),
-            "metadata": {k: v for k, v in meta.items() if isinstance(v, (str, int, float, bool))},
-        })
+        out.append(
+            {
+                "score": score if isinstance(score, (int, float)) else None,
+                "via": item.get("via", "direct") if isinstance(item, dict) else "direct",
+                "label": meta.get("rule_id") or meta.get("chunk_type") or "chunk",
+                "text": item_text(item),
+                "metadata": {
+                    k: v for k, v in meta.items() if isinstance(v, (str, int, float, bool))
+                },
+            }
+        )
     return out
 
 
@@ -166,20 +179,27 @@ def decisions_for_review(review_id):
 
 # Request models.
 class Listing(BaseModel):
-    title: str = ""
-    description: str = ""
-    category: str = ""
-    price: str = ""
+    title: str = Field("", max_length=200)
+    description: str = Field("", max_length=5000)
+    category: str = Field("", max_length=100)
+    price: str = Field("", max_length=50)
     attributes: dict = Field(default_factory=dict)
-    seller: str = ""
-    tags: list = Field(default_factory=list)
+    seller: str = Field("", max_length=200)
+    tags: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, value):
+        if any(len(str(tag)) > 50 for tag in value):
+            raise ValueError("Each tag must be 50 characters or fewer.")
+        return value
 
 
 class ReviewRequest(BaseModel):
     listing: Listing
-    others: list = Field(default_factory=list)
-    reviewer: str = ""
-    top_n: int = 6
+    others: list[Listing] = Field(default_factory=list, max_length=100)
+    reviewer: str = Field("", max_length=200)
+    top_n: int = Field(6, ge=1, le=20)
 
 
 class DecisionRequest(BaseModel):
@@ -187,12 +207,12 @@ class DecisionRequest(BaseModel):
     finding_id: int
     action: str
     revised_text: str = ""
-    reviewer: str
+    reviewer: str = Field(..., min_length=1, max_length=200)
 
 
 class AskRequest(BaseModel):
-    query: str
-    top_n: int = 6
+    query: str = Field(..., min_length=1, max_length=1000)
+    top_n: int = Field(6, ge=1, le=20)
 
 
 @app.get("/api/health")
@@ -225,11 +245,13 @@ def create_review(req: ReviewRequest):
     require_models()
     listing = req.listing.model_dump()
     result = review_listing_with_ai(
-        listing, req.others, _state["keyword"], _state["hybrid"], top_n=req.top_n)
+        listing, req.others, _state["keyword"], _state["hybrid"], top_n=req.top_n
+    )
     conn = get_conn()
     listing_id = store.save_listing(conn, listing)
-    review_id = store.save_review(conn, listing_id, reviewer=req.reviewer,
-                                  error=result.get("error") or "")
+    review_id = store.save_review(
+        conn, listing_id, reviewer=req.reviewer, error=result.get("error") or ""
+    )
     store.save_failed_checks(conn, review_id, result.get("failed"))
     if result.get("ai"):
         store.save_ai_findings(conn, review_id, result["ai"].get("findings"))
@@ -237,15 +259,28 @@ def create_review(req: ReviewRequest):
     findings = store.get_findings(conn, review_id)
     outcome = current_outcome(findings, {})
     store.set_review_outcome(conn, review_id, outcome, req.reviewer)
-    logger.info("review_created", extra={"extra_data": {
-        "review_id": review_id, "failed": len(result["failed"]),
-        "ai_findings": len((result.get("ai") or {}).get("findings", []))}})
+    logger.info(
+        "review_created",
+        extra={
+            "extra_data": {
+                "review_id": review_id,
+                "failed": len(result["failed"]),
+                "ai_findings": len((result.get("ai") or {}).get("findings", [])),
+            }
+        },
+    )
     return {
-        "listing_id": listing_id, "review_id": review_id, "outcome": outcome,
+        "listing_id": listing_id,
+        "review_id": review_id,
+        "outcome": outcome,
         "original": {k: field_text(listing, k) for k in ("title", "description", "tags")},
-        "checks": result["checks"], "failed": result["failed"],
-        "triggers": result["triggers"], "ai": result["ai"], "error": result["error"],
-        "findings": findings, "decisions": {},
+        "checks": result["checks"],
+        "failed": result["failed"],
+        "triggers": result["triggers"],
+        "ai": result["ai"],
+        "error": result["error"],
+        "findings": findings,
+        "decisions": {},
         "retrieved": serialize_retrieved(result.get("retrieved")),
     }
 
@@ -257,7 +292,7 @@ def get_review(review_id: int):
     review = next((r for r in reviews if r["id"] == review_id), None)
     if not review:
         raise HTTPException(status_code=404, detail="Review not found.")
-    listings = {l["id"]: l for l in store.get_listings(conn)}
+    listings = {listing_row["id"]: listing_row for listing_row in store.get_listings(conn)}
     findings = store.get_findings(conn, review_id)
     decisions = decisions_for_review(review_id)
     outcome = current_outcome(findings, decisions)
@@ -270,9 +305,13 @@ def get_review(review_id: int):
         decisions,
     )
     return {
-        "review": review, "listing": listing, "findings": findings,
-        "decisions": decisions, "outcome": outcome,
-        "original": original, "revised": revised,
+        "review": review,
+        "listing": listing,
+        "findings": findings,
+        "decisions": decisions,
+        "outcome": outcome,
+        "original": original,
+        "revised": revised,
     }
 
 
@@ -291,6 +330,11 @@ def list_decisions(listing_id: int | None = None):
     return {"decisions": store.get_decisions(get_conn(), listing_id)}
 
 
+@app.get("/api/audit/verify")
+def verify_audit():
+    return {"valid": store.verify_audit_chain(get_conn())}
+
+
 @app.post("/api/decisions")
 def record_decision(req: DecisionRequest):
     conn = get_conn()
@@ -305,28 +349,46 @@ def record_decision(req: DecisionRequest):
         raise HTTPException(status_code=400, detail="Reviewer name is required.")
     reviews = store.get_reviews(conn)
     review = next((r for r in reviews if r["id"] == req.review_id), None)
-    listings = {l["id"]: l for l in store.get_listings(conn)}
+    listings = {listing_row["id"]: listing_row for listing_row in store.get_listings(conn)}
     listing = listings.get(review["listing_id"], {}) if review else {}
     if is_self_review(req.reviewer, listing.get("seller")):
-        raise HTTPException(status_code=403, detail="Self-review is blocked: reviewer must differ from seller.")
-    revised = req.revised_text if action in ("approve", "edit") else original_text_for(listing, finding)
-    store.log_decision(conn, review["listing_id"], req.review_id, field=finding["field"],
-                       original_text=original_text_for(listing, finding),
-                       revised_text=revised or "", reviewer_name=req.reviewer,
-                       action=action, finding_id=finding["id"])
+        raise HTTPException(
+            status_code=403,
+            detail="Self-review is blocked: reviewer must differ from seller.",
+        )
+    revised = (
+        req.revised_text if action in ("approve", "edit") else original_text_for(listing, finding)
+    )
+    store.log_decision(
+        conn,
+        review["listing_id"],
+        req.review_id,
+        field=finding["field"],
+        original_text=original_text_for(listing, finding),
+        revised_text=revised or "",
+        reviewer_name=req.reviewer,
+        action=action,
+        finding_id=finding["id"],
+    )
     decisions = decisions_for_review(req.review_id)
     outcome = current_outcome(findings, decisions)
     store.set_review_outcome(conn, req.review_id, outcome, req.reviewer)
-    logger.info("decision_recorded", extra={"extra_data": {
-        "review_id": req.review_id, "finding_id": req.finding_id, "action": action}})
+    logger.info(
+        "decision_recorded",
+        extra={
+            "extra_data": {
+                "review_id": req.review_id,
+                "finding_id": req.finding_id,
+                "action": action,
+            }
+        },
+    )
     return {"status": "ok", "outcome": outcome, "decisions": decisions}
 
 
 @app.post("/api/ask")
 def ask_policy(req: AskRequest):
     require_models()
-    if not req.query.strip():
-        raise HTTPException(status_code=400, detail="Query is required.")
     results = _state["hybrid"].search(query=req.query, top_n=req.top_n)
     answer = generate_answer(req.query, format_context(results))
     return {"answer": answer, "chunks": serialize_retrieved(results)}

@@ -56,6 +56,20 @@ body {
   padding: 14px;
   margin-bottom: 12px;
 }
+.outcome-panel {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  background: var(--card);
+}
+.evidence { background: #fff8c5; padding: 6px 8px; border-radius: 4px; }
+mark { background: #fbbc04; padding: 1px 3px; }
+.tabs button:focus-visible, .btn:focus-visible, input:focus-visible,
+textarea:focus-visible, select:focus-visible { outline: 3px solid #8ab4f8; outline-offset: 2px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
 

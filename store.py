@@ -14,6 +14,7 @@ Each decision records: listing id, field, original text, revised text,
 reviewer name, action (approve / edit / reject), timestamp.
 """
 
+import hashlib
 import json
 import sqlite3
 import threading
@@ -68,6 +69,8 @@ CREATE TABLE IF NOT EXISTS decisions (
     revised_text  TEXT NOT NULL DEFAULT '',
     reviewer_name TEXT NOT NULL DEFAULT '',
     action        TEXT NOT NULL,              -- 'approve' / 'edit' / 'reject'
+    prev_hash     TEXT NOT NULL DEFAULT '',
+    row_hash      TEXT NOT NULL DEFAULT '',
     created_at    TEXT NOT NULL
 );
 
@@ -88,6 +91,7 @@ def _sync(fn):
     def wrapper(*args, **kwargs):
         with _lock:
             return fn(*args, **kwargs)
+
     return wrapper
 
 
@@ -103,6 +107,30 @@ def get_db(path=DEFAULT_DB):
     conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(decisions)")}
+    if "prev_hash" not in columns:
+        conn.execute("ALTER TABLE decisions ADD COLUMN prev_hash TEXT NOT NULL DEFAULT ''")
+    if "row_hash" not in columns:
+        conn.execute("ALTER TABLE decisions ADD COLUMN row_hash TEXT NOT NULL DEFAULT ''")
+    conn.executescript(
+        """
+        CREATE TRIGGER IF NOT EXISTS decisions_no_update
+        BEFORE UPDATE ON decisions
+        BEGIN
+            SELECT RAISE(ABORT, 'decisions are append-only');
+        END;
+        CREATE TRIGGER IF NOT EXISTS decisions_no_delete
+        BEFORE DELETE ON decisions
+        BEGIN
+            SELECT RAISE(ABORT, 'decisions are append-only');
+        END;
+        CREATE INDEX IF NOT EXISTS idx_reviews_listing_id ON reviews(listing_id);
+        CREATE INDEX IF NOT EXISTS idx_findings_review_id ON findings(review_id);
+        """
+    )
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.commit()
     return conn
 
 
@@ -141,15 +169,31 @@ def save_review(conn, listing_id, reviewer="", outcome="Pending", error=""):
 
 
 @_sync
-def save_finding(conn, review_id, kind, field="", quote="", issue_type="",
-                 severity="Major", explanation="", rule_ids=None, suggested_wording=""):
+def save_finding(
+    conn,
+    review_id,
+    kind,
+    field="",
+    quote="",
+    issue_type="",
+    severity="Major",
+    explanation="",
+    rule_ids=None,
+    suggested_wording="",
+):
     cur = conn.execute(
         "INSERT INTO findings (review_id, kind, field, quote, issue_type, severity,"
         " explanation, rule_ids, suggested_wording)"
         " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
-            review_id, kind, field, quote, issue_type, severity,
-            explanation, json.dumps(rule_ids or [], ensure_ascii=False),
+            review_id,
+            kind,
+            field,
+            quote,
+            issue_type,
+            severity,
+            explanation,
+            json.dumps(rule_ids or [], ensure_ascii=False),
             suggested_wording,
         ),
     )
@@ -162,14 +206,20 @@ def save_failed_checks(conn, review_id, failed):
     """Persist deterministic failures as findings (severity Major, rule IDs kept)."""
     ids = []
     for c in failed or []:
-        ids.append(save_finding(
-            conn, review_id, kind="deterministic",
-            field=c.get("check", ""), quote="",
-            issue_type="incomplete", severity="Major",
-            explanation=c.get("message", ""),
-            rule_ids=list(c.get("rules") or []),
-            suggested_wording="",
-        ))
+        ids.append(
+            save_finding(
+                conn,
+                review_id,
+                kind="deterministic",
+                field=c.get("check", ""),
+                quote="",
+                issue_type="incomplete",
+                severity="Major",
+                explanation=c.get("message", ""),
+                rule_ids=list(c.get("rules") or []),
+                suggested_wording="",
+            )
+        )
     return ids
 
 
@@ -177,14 +227,20 @@ def save_failed_checks(conn, review_id, failed):
 def save_ai_findings(conn, review_id, findings):
     ids = []
     for f in findings or []:
-        ids.append(save_finding(
-            conn, review_id, kind="ai",
-            field=f.get("field", ""), quote=f.get("quote", ""),
-            issue_type=f.get("issue_type", ""), severity=f.get("severity", "Minor"),
-            explanation=f.get("explanation", ""),
-            rule_ids=list(f.get("rule_ids") or []),
-            suggested_wording=f.get("suggested_wording", ""),
-        ))
+        ids.append(
+            save_finding(
+                conn,
+                review_id,
+                kind="ai",
+                field=f.get("field", ""),
+                quote=f.get("quote", ""),
+                issue_type=f.get("issue_type", ""),
+                severity=f.get("severity", "Minor"),
+                explanation=f.get("explanation", ""),
+                rule_ids=list(f.get("rule_ids") or []),
+                suggested_wording=f.get("suggested_wording", ""),
+            )
+        )
     return ids
 
 
@@ -215,16 +271,27 @@ def get_ai_revision(conn, review_id):
 def set_review_outcome(conn, review_id, outcome, reviewer=""):
     """Update a review's outcome/reviewer. (Reviews are mutable; the DECISIONS log is not.)"""
     if reviewer:
-        conn.execute("UPDATE reviews SET outcome = ?, reviewer = ? WHERE id = ?",
-                     (outcome, reviewer, review_id))
+        conn.execute(
+            "UPDATE reviews SET outcome = ?, reviewer = ? WHERE id = ?",
+            (outcome, reviewer, review_id),
+        )
     else:
         conn.execute("UPDATE reviews SET outcome = ? WHERE id = ?", (outcome, review_id))
     conn.commit()
 
 
 @_sync
-def log_decision(conn, listing_id, review_id, field, original_text, revised_text,
-                 reviewer_name, action, finding_id=None):
+def log_decision(
+    conn,
+    listing_id,
+    review_id,
+    field,
+    original_text,
+    revised_text,
+    reviewer_name,
+    action,
+    finding_id=None,
+):
     """
     Append one reviewer decision to the audit log.
     No UPDATE or DELETE is ever performed on this table.
@@ -234,16 +301,74 @@ def log_decision(conn, listing_id, review_id, field, original_text, revised_text
         raise ValueError(f"action must be one of {ACTIONS}")
     if not str(reviewer_name).strip():
         raise ValueError("reviewer_name is required")
+    previous = conn.execute("SELECT row_hash FROM decisions ORDER BY id DESC LIMIT 1").fetchone()
+    prev_hash = previous["row_hash"] if previous else ""
+    created_at = _now()
+    payload = json.dumps(
+        {
+            "listing_id": listing_id,
+            "review_id": review_id,
+            "finding_id": finding_id,
+            "field": field,
+            "original_text": original_text or "",
+            "revised_text": revised_text or "",
+            "reviewer_name": reviewer_name.strip(),
+            "action": action,
+            "created_at": created_at,
+            "prev_hash": prev_hash,
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+    row_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()
     cur = conn.execute(
         "INSERT INTO decisions (listing_id, review_id, finding_id, field,"
-        " original_text, revised_text, reviewer_name, action, created_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (listing_id, review_id, finding_id, field,
-         original_text or "", revised_text or "",
-         reviewer_name.strip(), action, _now()),
+        " original_text, revised_text, reviewer_name, action, prev_hash, row_hash, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            listing_id,
+            review_id,
+            finding_id,
+            field,
+            original_text or "",
+            revised_text or "",
+            reviewer_name.strip(),
+            action,
+            prev_hash,
+            row_hash,
+            created_at,
+        ),
     )
     conn.commit()
     return cur.lastrowid
+
+
+@_sync
+def verify_audit_chain(conn):
+    """Verify that decisions have not been altered or reordered."""
+    previous = ""
+    for row in conn.execute("SELECT * FROM decisions ORDER BY id"):
+        payload = json.dumps(
+            {
+                "listing_id": row["listing_id"],
+                "review_id": row["review_id"],
+                "finding_id": row["finding_id"],
+                "field": row["field"],
+                "original_text": row["original_text"],
+                "revised_text": row["revised_text"],
+                "reviewer_name": row["reviewer_name"],
+                "action": row["action"],
+                "created_at": row["created_at"],
+                "prev_hash": row["prev_hash"],
+            },
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        expected = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        if row["prev_hash"] != previous or row["row_hash"] != expected:
+            return False
+        previous = row["row_hash"]
+    return True
 
 
 # ----------------------------------------------------------------------
@@ -272,49 +397,80 @@ def compute_outcome(items):
 # ----------------------------------------------------------------------
 @_sync
 def get_listings(conn):
-    return [dict(r) for r in conn.execute(
-        "SELECT * FROM listings ORDER BY id DESC").fetchall()]
+    return [dict(r) for r in conn.execute("SELECT * FROM listings ORDER BY id DESC").fetchall()]
 
 
 @_sync
 def get_reviews(conn, listing_id=None):
     if listing_id:
-        return [dict(r) for r in conn.execute(
-            "SELECT * FROM reviews WHERE listing_id = ? ORDER BY id DESC", (listing_id,)).fetchall()]
-    return [dict(r) for r in conn.execute(
-        "SELECT * FROM reviews ORDER BY id DESC").fetchall()]
+        return [
+            dict(r)
+            for r in conn.execute(
+                "SELECT * FROM reviews WHERE listing_id = ? ORDER BY id DESC", (listing_id,)
+            ).fetchall()
+        ]
+    return [dict(r) for r in conn.execute("SELECT * FROM reviews ORDER BY id DESC").fetchall()]
 
 
 @_sync
 def get_findings(conn, review_id):
-    return [dict(r) for r in conn.execute(
-        "SELECT * FROM findings WHERE review_id = ? ORDER BY id", (review_id,)).fetchall()]
+    return [
+        dict(r)
+        for r in conn.execute(
+            "SELECT * FROM findings WHERE review_id = ? ORDER BY id", (review_id,)
+        ).fetchall()
+    ]
 
 
 @_sync
 def get_decisions(conn, listing_id=None):
     if listing_id:
-        return [dict(r) for r in conn.execute(
-            "SELECT * FROM decisions WHERE listing_id = ? ORDER BY id", (listing_id,)).fetchall()]
-    return [dict(r) for r in conn.execute(
-        "SELECT * FROM decisions ORDER BY id DESC LIMIT 500").fetchall()]
+        return [
+            dict(r)
+            for r in conn.execute(
+                "SELECT * FROM decisions WHERE listing_id = ? ORDER BY id", (listing_id,)
+            ).fetchall()
+        ]
+    return [
+        dict(r)
+        for r in conn.execute("SELECT * FROM decisions ORDER BY id DESC LIMIT 500").fetchall()
+    ]
 
 
 if __name__ == "__main__":
     # Tiny self-check: append-only audit log + outcome rules.
     import os
     import tempfile
+
     tmp = os.path.join(tempfile.gettempdir(), "reviewer_selfcheck.db")
     if os.path.exists(tmp):
         os.remove(tmp)
     c = get_db(tmp)
-    lid = save_listing(c, {"title": "t", "description": "d", "category": "Electronics",
-                           "price": "10", "attributes": {}, "seller": "Seller A", "tags": []})
+    lid = save_listing(
+        c,
+        {
+            "title": "t",
+            "description": "d",
+            "category": "Electronics",
+            "price": "10",
+            "attributes": {},
+            "seller": "Seller A",
+            "tags": [],
+        },
+    )
     rid = save_review(c, lid, reviewer="Ravi")
-    fid = save_finding(c, rid, "ai", field="description", quote="cures pain",
-                       issue_type="prohibited", severity="Critical",
-                       explanation="medical claim", rule_ids=["POL-6.2"],
-                       suggested_wording="may help with comfort")
+    fid = save_finding(
+        c,
+        rid,
+        "ai",
+        field="description",
+        quote="cures pain",
+        issue_type="prohibited",
+        severity="Critical",
+        explanation="medical claim",
+        rule_ids=["POL-6.2"],
+        suggested_wording="may help with comfort",
+    )
     assert compute_outcome([{"severity": "Critical", "resolved": False}]) == "Rejected"
     assert compute_outcome([{"severity": "Critical", "resolved": True}]) == "Approved"
     assert compute_outcome([{"severity": "Major", "resolved": False}]) == "Needs changes"
