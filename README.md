@@ -263,7 +263,8 @@ tests/              pytest suite
 ## 7. Tests
 
 ```bash
-uv run pytest tests/ -q    # 19 tests, no API keys required
+uv run pytest tests/ -q                    # 19 tests, no API keys required
+uv run pytest tests/ --cov                 # with coverage (min 50%)
 ```
 
 - `tests/test_validator.py` — clean listing passes; required fields, price format,
