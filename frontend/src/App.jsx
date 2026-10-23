@@ -15,6 +15,9 @@ function FindingCard({ bundle, finding, reviewer, onDecide }) {
   const [err, setErr] = useState("");
   const done = (bundle.decisions || {})[finding.id];
   const rules = safeRules(finding.rule_ids);
+  const evidence = finding.quote
+    ? String(bundle.original?.description || "").split(finding.quote)
+    : null;
 
   async function act(action) {
     if (!reviewer.trim()) { setErr("Enter reviewer name first."); return; }
@@ -33,7 +36,9 @@ function FindingCard({ bundle, finding, reviewer, onDecide }) {
     <div className={`card finding ${finding.severity}`}>
       <strong>[{finding.severity}] {finding.field} — {finding.issue_type || finding.kind}</strong>
       <div className="muted">{finding.kind === "deterministic" ? "Rule check (no AI)" : "AI finding"}</div>
-      {finding.quote && <div className="muted">Quote: <i>{finding.quote}</i></div>}
+      {finding.quote && <div className="evidence">Evidence: {evidence && evidence.length > 1
+        ? <>{evidence[0]}<mark>{finding.quote}</mark>{evidence.slice(1).join(finding.quote)}</>
+        : <i>{finding.quote}</i>}</div>}
       {finding.explanation && <p>{finding.explanation}</p>}
       <div>{rules.map((r) => <span key={r} className="chip">{r}</span>)}</div>
       {finding.suggested_wording && <p>Suggestion: {finding.suggested_wording}</p>}
@@ -60,7 +65,12 @@ function ReviewResult({ bundle, reviewer, onDecide }) {
   const ai = bundle.ai;
   return (
     <div>
-      <Outcome value={bundle.outcome} />
+      <div className="outcome-panel" aria-live="polite">
+        <Outcome value={bundle.outcome} />
+        <span className="muted">{bundle.failed?.length || bundle.findings?.length
+          ? `${bundle.findings?.filter((f) => f.severity === "Critical").length || 0} critical or major finding(s) open`
+          : "No open findings"}</span>
+      </div>
       <h4>Rule checks (no AI)</h4>
       {(bundle.failed || []).length === 0
         ? <div className="ok">All deterministic checks passed.</div>
@@ -184,6 +194,22 @@ export default function App() {
       });
   }, []);
 
+  useEffect(() => {
+    function onKeyDown(event) {
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) return;
+      const index = TABS.indexOf(tab);
+      if (event.key === "?" ) {
+        setErr("Shortcuts: j/k move between findings; a/e/r are available on each finding.");
+      } else if (event.key === "ArrowRight") {
+        setTab(TABS[(index + 1) % TABS.length]);
+      } else if (event.key === "ArrowLeft") {
+        setTab(TABS[(index - 1 + TABS.length) % TABS.length]);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [tab]);
+
   async function init() {
     setLoading(true); setErr("");
     try { await api.init(); setReady(true); }
@@ -287,8 +313,9 @@ export default function App() {
       <div className="layout">
         {err && <div className="err">{err}</div>}
         {!ready && <div className="warn">Initialize models from the header before reviewing.</div>}
-        <div className="tabs">
-          {TABS.map((t) => <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t}</button>)}
+        <div className="tabs" role="tablist" aria-label="Reviewer views">
+          {TABS.map((t) => <button key={t} role="tab" aria-selected={tab === t}
+            className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t}</button>)}
         </div>
 
         {tab === "Review" && (
@@ -326,7 +353,7 @@ export default function App() {
 
         {tab === "Batch" && (
           <div className="card">
-            <h3>Batch review (5–10 listings, CSV or JSON)</h3>
+            <h3>Batch review (up to 100 listings, CSV or JSON)</h3>
             <input type="file" accept=".csv,.json" onChange={loadBatchFile} />
             {batch.length > 0 && (
               <>
@@ -379,6 +406,8 @@ export default function App() {
                 <tr key={r.id}><td>{r.id}</td><td>#{r.listing_id}</td><td>{r.reviewer || "–"}</td><td>{r.outcome}</td><td>{r.created_at}</td></tr>
               ))}</tbody></table>
             <h4>Decisions (append-only audit log)</h4>
+            <button className="btn" onClick={() => api.auditVerify().then((r) => setErr(r.valid ? "" : "Audit chain verification failed."))
+              .catch((e) => setErr(e.message))}>Verify audit chain</button>
             <table><thead><tr><th>ID</th><th>Review</th><th>Field</th><th>Action</th><th>Reviewer</th><th>Created</th></tr></thead>
               <tbody>{decisions.map((d) => (
                 <tr key={d.id}><td>{d.id}</td><td>{d.review_id}</td><td>{d.field}</td><td>{d.action}</td><td>{d.reviewer_name}</td><td>{d.created_at}</td></tr>
