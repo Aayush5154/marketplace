@@ -6,3 +6,8 @@ data/bm25.pkl
 node_modules/
 frontend/dist/
 .pytest_cache/
+.coverage
+marketplace_reviewer.egg-info/
+data/
+*.pkl
+*.db

@@ -35,7 +35,7 @@ class CombinedSearch:
         fused = {}
 
         # BM25 Ranking
-        for rank, (score, text, metadata) in enumerate(keyword_results, start=1):
+        for rank, (_score, text, metadata) in enumerate(keyword_results, start=1):
             rrf_score = 1 / (self.k + rank)
             entry = fused.setdefault(text, {"rrf": 0.0, "metadata": {}})
             entry["rrf"] += rrf_score
@@ -43,7 +43,7 @@ class CombinedSearch:
                 entry["metadata"] = metadata
 
         # Semantic Ranking
-        for rank, (doc, score) in enumerate(semantic_results, start=1):
+        for rank, (doc, _score) in enumerate(semantic_results, start=1):
             text = doc.page_content if hasattr(doc, "page_content") else doc
             metadata = getattr(doc, "metadata", {}) or {}
             rrf_score = 1 / (self.k + rank)

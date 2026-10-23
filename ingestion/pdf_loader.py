@@ -11,14 +11,13 @@ def load_documents(folder):
     """
     loader = PyPDFDirectoryLoader(folder)
     pages = loader.load()
-    print(f"Loaded {len(pages)} pages")
 
     by_source = defaultdict(list)
     for page in pages:
         by_source[page.metadata.get("source", "unknown")].append(page)
 
     docs = []
-    for source, pgs in by_source.items():
+    for _source, pgs in by_source.items():
         pgs.sort(key=lambda d: d.metadata.get("page", 0))
         full_text = "\n\n".join(p.page_content for p in pgs)
         # Copy loader metadata from the first page.
@@ -33,5 +32,4 @@ def load_documents(folder):
             )
         )
 
-    print(f"Merged into {len(docs)} documents (one per source file)")
     return docs

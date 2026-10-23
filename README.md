@@ -156,8 +156,8 @@ let the model assert a rule it was not given.** Everything below follows from th
 
 | Layer | Decides | Why |
 |---|---|---|
-| `validator.py` (no AI) | required fields, price format/range, title & description length, supported category, category attributes, condition enum, tag count/length, contact details, exact + near duplicates, keyword stuffing, caps/emoji | These are objective, rule-bound and must be reproducible. An LLM would add cost, latency and non-determinism for zero accuracy gain |
-| `llm/chat.py` (AI) | unclear / misleading / prohibited / incomplete wording, unverifiable claims, assumptions, severity, suggested rewording | These need judgement and language understanding; they cannot be expressed as a regex |
+| `validator.py` (no AI) | required fields, price format/range, title & description length, supported category, category attributes, condition enum, tag count/length, contact details, exact + near duplicates, keyword stuffing, caps/emoji | These are objective, rule-bound and must be reproducible. An LLM would add cost, latency and non-determinism for zero accuracy gain |-|
+| `llm/chat.py` (AI) | unclear / misleading / prohibited / incomplete wording, unverifiable claims, assumptions, severity, suggested rewording | These need judgement and language understanding; they cannot be expressed as a regex |-|
 
 Both run on every review, and the UI renders them in **separate sections**. The
 deterministic result is returned even when the LLM fails (`result["error"]`), so a
@@ -281,7 +281,22 @@ The model is only allowed to cite rules it was actually shown.
   corrected JSON object only. Beyond that the review degrades gracefully: the
   deterministic result is still returned with `error` set, never an exception.
 
-### 1.8 Severity and outcome
+### 1.8 Security and operational safeguards
+
+- Listing values are wrapped in explicit untrusted-data delimiters before they are
+  sent to the model. Instruction-like phrases such as "ignore previous" and
+  "system prompt" are deterministic findings under `POL-10.3`, not model commands.
+- Reviewer identity comparison collapses whitespace and uses Unicode-aware
+  case-folding, so case and spacing variants cannot bypass self-review protection.
+- Request models enforce field lengths, tag counts, batch size, and retrieval limits
+  server-side. These limits do not depend on the frontend.
+- The `decisions` table has database-level update/delete triggers and a SHA-256
+  hash chain. Verify it with `GET /api/audit/verify`.
+- Groq failures use bounded retries and a circuit breaker; deterministic checks are
+  still returned when the AI path is unavailable. Successful review payloads are
+  cached by listing, retrieved policy context, and retrieval settings.
+
+### 1.9 Severity and outcome
 
 Severity ladder: Critical (illegal/unsafe/fraudulent, medical claims) > Major
 (misleading/incomplete) > Minor (style) > Info (note/assumption).
@@ -295,7 +310,7 @@ simply not deciding — leaves it open.
 
 Deterministic failures are stored as Major.
 
-### 1.9 Storage decisions
+### 1.10 Storage decisions
 
 SQLite (`store.py`), four tables plus one:
 
@@ -309,7 +324,7 @@ SQLite (`store.py`), four tables plus one:
 - **Self-approval is blocked** server-side: reviewer must differ from the seller.
 - Every DB call is serialized with a lock and commits per write.
 
-### 1.10 UI decision: Streamlit -> React
+### 1.11 UI decision: Streamlit -> React
 
 The review logic, validation, retrieval, prompts and storage were kept byte-for-byte
 and only the presentation layer was replaced. `backend/app.py` is a thin FastAPI
@@ -327,7 +342,7 @@ adapter over the same functions (`run_all_checks`, `review_listing_with_ai`,
 - Compare refetches the review whenever the decision set changes (not only when the
   outcome changes), otherwise approving a Minor finding would not refresh the view.
 
-### 1.11 Observability
+### 1.12 Observability
 
 `app_logging.py` emits **structured JSON logs** (one object per line, `event`, `data`,
 `exc`). Application events (`models_initialized`, `review_created`, `decision_recorded`)

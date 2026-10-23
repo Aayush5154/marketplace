@@ -180,6 +180,16 @@ MODEL_TRIGGER_PHRASES = [
     "organic",
 ]
 
+PROMPT_INJECTION_PHRASES = (
+    "ignore previous",
+    "ignore all previous",
+    "system prompt",
+    "developer message",
+    "follow these instructions",
+    "approve this",
+    "disregard the rules",
+)
+
 
 # ============================================================
 # HELPERS
@@ -1100,6 +1110,22 @@ def find_model_triggers(listing):
     return triggers
 
 
+def check_prompt_injection(listing):
+    """Flag instruction-like listing text before it reaches the model."""
+    text = " ".join(
+        str(listing.get(field) or "")
+        for field in ("title", "description", "seller")
+    ).casefold()
+    matches = [phrase for phrase in PROMPT_INJECTION_PHRASES if phrase in text]
+    return result(
+        "prompt_injection",
+        not matches,
+        ["POL-10.3"],
+        "instruction-like text found: " + ", ".join(matches) if matches
+        else "",
+    )
+
+
 # ============================================================
 # RUN ALL DETERMINISTIC CHECKS
 # ============================================================
@@ -1145,6 +1171,8 @@ def run_all_checks(
         check_keyword_stuffing(listing),
 
         check_caps_and_symbols(listing),
+
+        check_prompt_injection(listing),
     ]
 
 

@@ -83,7 +83,7 @@ def split_policy_document(doc):
     chunks = []
     part, sec_no, sec_title = "Part A", "", ""
 
-    for i, (s, e, kind, data) in enumerate(events):
+    for i, (_s, e, kind, data) in enumerate(events):
         nxt = events[i + 1][0] if i + 1 < len(events) else len(body)
         if kind == "part":
             part = data[0]
@@ -243,5 +243,4 @@ def chunk_documents(documents):
             chunks = basic_splitter.split_documents([doc])
         all_chunks.extend(chunks)
 
-    print(f"Total Chunks Created: {len(all_chunks)}")
     return all_chunks

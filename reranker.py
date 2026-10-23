@@ -33,7 +33,7 @@ class CrossEncoderReranker:
         scores = self.model.predict(pairs)
 
         # Keep original documents with their scores
-        results = list(zip(scores, documents))
+        results = list(zip(scores, documents, strict=False))
 
         # Sort by score only
         results.sort(key=lambda x: x[0], reverse=True)
