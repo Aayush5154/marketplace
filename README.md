@@ -12,6 +12,114 @@ log, and history.
 
 ---
 
+## Quick start: install, run, test
+
+These steps work on a fresh clone with no prior setup.
+
+### Prerequisites
+
+- Python 3.11+ and [uv](https://docs.astral.sh/uv/)
+- Node.js 20+ and npm
+
+### 1. Clone
+
+```bash
+git clone https://github.com/arthavjain103/marketplace.git
+cd marketplace
+```
+
+### 2. Install the backend
+
+```bash
+uv sync --dev
+```
+
+Installs the app plus dev tools (pytest, ruff, pytest-cov, httpx) so you can run
+the test suite and linter right away.
+
+### 3. Configure the environment
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and fill in real values:
+
+| Variable | Needed for | Notes |
+|---|---|---|
+| `PINECONE_API_KEY` | AI review, ingestion | Pinecone console |
+| `PINECONE_INDEX` | AI review, ingestion | Your Pinecone index name |
+| `GROQ_API_KEY` | AI review | Groq console |
+| `LOG_LEVEL` | optional | Defaults to `INFO` |
+
+`.env` is gitignored — never commit it. Only `.env.example` is tracked.
+Deterministic checks and the test suite work without API keys; AI review and
+ingestion need them.
+
+### 4. Install the frontend
+
+```bash
+cd frontend
+npm install
+cd ..
+```
+
+### 5. Ingest the policy PDFs (Pinecone + BM25)
+
+```bash
+python ingest.py
+```
+
+Reads `docs2/*.pdf`, structure-aware chunks them, uploads vectors to Pinecone,
+and saves the BM25 model to `data/bm25.pkl`. Required for AI review and
+retrieval.
+
+### 6. Run
+
+Backend (terminal 1):
+
+```bash
+uvicorn backend.app:app --port 8000
+```
+
+Frontend (terminal 2):
+
+```bash
+cd frontend
+npm run dev   # http://localhost:5173, proxies /api to :8000
+```
+
+Open http://localhost:5173. In the header, **Initialize models**, enter a
+**Reviewer name** (must differ from the seller; self-approval is blocked), then
+use the Review, Batch, Compare, History, or Ask tabs.
+
+CLI still available: `python main.py` (1 = policy question, 2 = listing review;
+needs ingested data).
+
+### 7. Test
+
+```bash
+uv run pytest tests/ -q                    # 19 tests, no API keys required
+uv run pytest tests/ --cov                 # with coverage (min 50%)
+```
+
+- `tests/test_validator.py` — deterministic checks
+- `tests/test_store.py` — review/finding flow, append-only audit log
+- `tests/test_backend.py` — API guards, outcome ladder, revised-text builder
+
+### 8. Lint
+
+```bash
+uv run ruff check .            # lint only
+uv run ruff format --check .   # format check
+uv run ruff check --fix .      # auto-fix safe issues
+uv run ruff format .           # format code
+```
+
+Configuration is in `pyproject.toml` under `[tool.ruff]` and `[tool.ruff.format]`.
+
+---
+
 ## 1. Approach and design decisions
 
 The core idea: **never trust the model for anything a rule can decide, and never
@@ -21,8 +129,8 @@ let the model assert a rule it was not given.** Everything below follows from th
 
 | Layer | Decides | Why |
 |---|---|---|
-| `validator.py` (no AI) | required fields, price format/range, title & description length, supported category, category attributes, condition enum, tag count/length, contact details, exact + near duplicates, keyword stuffing, caps/emoji | These are objective, rule-bound and must be reproducible. An LLM would add cost, latency and non-determinism for zero accuracy gain |
-| `llm/chat.py` (AI) | unclear / misleading / prohibited / incomplete wording, unverifiable claims, assumptions, severity, suggested rewording | These need judgement and language understanding; they cannot be expressed as a regex |
+| `validator.py` (no AI) | required fields, price format/range, title & description length, supported category, category attributes, condition enum, tag count/length, contact details, exact + near duplicates, keyword stuffing, caps/emoji | These are objective, rule-bound and must be reproducible. An LLM would add cost, latency and non-determinism for zero accuracy gain |-|
+| `llm/chat.py` (AI) | unclear / misleading / prohibited / incomplete wording, unverifiable claims, assumptions, severity, suggested rewording | These need judgement and language understanding; they cannot be expressed as a regex |-|
 
 Both run on every review, and the UI renders them in **separate sections**. The
 deterministic result is returned even when the LLM fails (`result["error"]`), so a
@@ -202,48 +310,15 @@ from retrieval through to the final finding count without reading code.
 
 ---
 
-## 2. Setup
-
-```bash
-uv sync
-cp .env.example .env    # fill PINECONE_API_KEY, PINECONE_INDEX, GROQ_API_KEY
-cd frontend && npm install
-```
-
-## 3. Ingest (policy PDF -> Pinecone + BM25)
-
-```bash
-python ingest.py
-```
-
-Reads `docs2/*.pdf`, structure-aware chunks them, uploads to Pinecone, and saves the
-BM25 model to `data/bm25.pkl`.
-
-## 4. Run
-
-```bash
-uvicorn backend.app:app --port 8000
-cd frontend && npm run dev     # http://localhost:5173, proxies /api to :8000
-```
-
-1. Header -> **Initialize models**
-2. Enter a **Reviewer name** (must differ from the seller; self-approval is blocked)
-3. **Review**: fill the form -> Review listing
-4. **Batch**: upload `.csv` or `.json` (5–10 listings), one by one; duplicate checks
-   run against the other listings in the same batch
-5. **Compare**: original vs revised side-by-side with a line diff
-6. **History**: past listings / reviews / decisions with a listing filter
-7. **Ask**: policy Q&A with cited retrieved chunks
-
-CLI still available: `python main.py` (1 = policy question, 2 = listing review).
-
-## 5. Listing outcome
+## 2. Listing outcome
 
 - **Approved** = no Critical or Major finding left open
 - **Needs changes** = a Major finding is still open (including a rejected Major fix)
 - **Rejected** = a Critical finding is still open
 
-## 6. Architecture
+---
+
+## 3. Architecture
 
 ```
 frontend/            React + Vite, plain CSS light theme
@@ -260,34 +335,9 @@ app_logging.py      structured JSON logging
 tests/              pytest suite
 ```
 
-## 7. Tests
+---
 
-```bash
-uv run pytest tests/ -q                    # 19 tests, no API keys required
-uv run pytest tests/ --cov                 # with coverage (min 50%)
-```
-
-- `tests/test_validator.py` — clean listing passes; required fields, price format,
-  length bounds, supported category, contact details, exact/near duplicate (including
-  the same-seller condition), caps/stuffing, trigger extraction
-- `tests/test_store.py` — outcome ladder, review/finding flow, append-only audit log,
-  decision validation
-- `tests/test_backend.py` — attribute parsing, self-review block, outcome from
-  decisions, revised-text builder (undecided fields stay original; approved AI
-  finding uses the AI revision), `ai_revisions` round-trip, endpoint guards
-
-## 7b. Lint
-
-```bash
-uv run ruff check .      # lint only
-uv run ruff check --fix .  # auto-fix safe issues
-uv run ruff format .     # format code
-```
-
-Configuration is in `pyproject.toml` under `[tool.ruff]` and `[tool.ruff.format]`.
-Uses line-length 100, double quotes, and targets Python 3.11+.
-
-## 8. Completed scope
+## 4. Completed scope
 
 - Listing fields: title, description, category, price, attributes, seller, optional tags
 - AI workflow: retrieve policy + brand guidance, detect unclear/misleading/prohibited/
@@ -299,12 +349,16 @@ Uses line-length 100, double quotes, and targets Python 3.11+.
   small-batch processing, preserved review and approval history
 - Structured application and AI-workflow logs; focused tests
 
-## 9. Excluded scope (per assignment)
+---
+
+## 5. Excluded scope (per assignment)
 
 Publishing to a real marketplace, image moderation, payments, seller verification,
 unrestricted product categories.
 
-## 10. Limitations
+---
+
+## 6. Limitations
 
 - AI review needs `GROQ_API_KEY` and a populated Pinecone index; deterministic checks
   and history work without them once `data/bm25.pkl` exists.
@@ -318,7 +372,9 @@ unrestricted product categories.
   similarity on title/description within a category).
 - Batch processing is capped at 5–10 listings by design.
 
-## 11. Deployment
+---
+
+## 7. Deployment
 
 - Backend: `uvicorn backend.app:app --host 0.0.0.0 --port 8000`, env supplied by the
   host (`.env` is loaded locally via `python-dotenv`)
