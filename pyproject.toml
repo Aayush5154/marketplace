@@ -28,7 +28,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "--cov --cov-report=term-missing --cov-fail-under=50"
+addopts = "--cov --cov-report=term-missing --cov-fail-under=60"
 testpaths = ["tests"]
 
 [build-system]
@@ -37,7 +37,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["backend*", "llm*", "pro*", "ingestion*", "tests*"]
+include = ["backend*", "llm*", "pro*", "ingestion*", "tests*", "validator*"]
 exclude = ["frontend*", "docs2*", "samples*"]
 
 [tool.ruff]
