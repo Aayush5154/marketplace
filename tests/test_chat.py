@@ -3,7 +3,6 @@
 Mocks langchain_groq.ChatGroq.invoke so no real Groq API calls are made.
 """
 
-from types import SimpleNamespace
 
 import pytest
 

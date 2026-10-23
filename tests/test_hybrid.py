@@ -6,12 +6,11 @@ All external dependencies (BM25, Pinecone, CrossEncoder) are mocked.
 """
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from pro.hybrid import CombinedSearch
-
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
@@ -80,11 +79,11 @@ class TestRRFFusion:
         vec_res = cs.vector_search.search("q", fetch_k)
 
         fused = {}
-        for rank, (score, text, metadata) in enumerate(kw_res, start=1):
+        for rank, (_score, text, _metadata) in enumerate(kw_res, start=1):
             rrf = 1 / (cs.k + rank)
             entry = fused.setdefault(text, {"rrf": 0.0})
             entry["rrf"] += rrf
-        for rank, (doc, score) in enumerate(vec_res, start=1):
+        for rank, (doc, _score) in enumerate(vec_res, start=1):
             text = doc.page_content
             rrf = 1 / (cs.k + rank)
             entry = fused.setdefault(text, {"rrf": 0.0})
@@ -104,10 +103,10 @@ class TestRRFFusion:
         vec_res = cs.vector_search.search("q", fetch_k)
 
         fused = {}
-        for rank, (score, text, metadata) in enumerate(kw_res, start=1):
+        for rank, (_score, text, _metadata) in enumerate(kw_res, start=1):
             entry = fused.setdefault(text, {"rrf": 0.0})
             entry["rrf"] += 1 / (cs.k + rank)
-        for rank, (doc, score) in enumerate(vec_res, start=1):
+        for rank, (doc, _score) in enumerate(vec_res, start=1):
             text = doc.page_content
             entry = fused.setdefault(text, {"rrf": 0.0})
             entry["rrf"] += 1 / (cs.k + rank)

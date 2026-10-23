@@ -24,7 +24,8 @@ def upload(chunks, batch_size=64):
         c.metadata = _clean_metadata(c.metadata)
 
     # Stable ids: re-ingest overwrites the same ids instead of duplicating.
-    source_tag = lambda c: str(c.metadata.get("source", "doc")).replace("\\", "/").split("/")[-1]
+    def source_tag(c):
+        return str(c.metadata.get("source", "doc")).replace("\\", "/").split("/")[-1]
     ids = []
     for i, c in enumerate(chunks):
         cid = c.metadata.get("chunk_id")
@@ -38,4 +39,3 @@ def upload(chunks, batch_size=64):
         batch_size=batch_size,
         namespace=getattr(config, "PINECONE_NAMESPACE", None),
     )
-    print(f"Uploaded Successfully ({len(chunks)} chunks)")

@@ -51,7 +51,7 @@ class KeywordSearchBM25:
         scores = self.bm25.get_scores(tokenized_query)
 
         ranked = sorted(
-            zip(scores, self.documents, self.metadatas),
+            zip(scores, self.documents, self.metadatas, strict=False),
             key=lambda x: x[0],
             reverse=True,
         )[:top_n]
@@ -61,25 +61,25 @@ class KeywordSearchBM25:
 # Example usage
 if __name__ == "__main__":
     documents = [
-        """Machine learning is a field of artificial intelligence that uses statistical techniques 
-        to give computer systems the ability to learn from data, without being explicitly programmed. 
+        """Machine learning is a field of artificial intelligence that uses statistical techniques
+        to give computer systems the ability to learn from data, without being explicitly programmed.
         This includes supervised learning, unsupervised learning, and reinforcement learning.""",
 
-        """Natural language processing (NLP) is a branch of artificial intelligence focused on the 
-        interaction between computers and humans through natural language. NLP includes tasks like 
+        """Natural language processing (NLP) is a branch of artificial intelligence focused on the
+        interaction between computers and humans through natural language. NLP includes tasks like
         language translation, sentiment analysis, and speech recognition.""",
 
-        """BM25 is an algorithm used in information retrieval that ranks documents based on their 
-        relevance to a given search query. It is often applied in keyword-based search systems 
+        """BM25 is an algorithm used in information retrieval that ranks documents based on their
+        relevance to a given search query. It is often applied in keyword-based search systems
         and is particularly effective in ranking large collections of text data.""",
 
-        """Hybrid search combines the strengths of keyword-based search with semantic search. 
-        Keyword-based search like BM25 focuses on matching exact terms, while semantic search 
+        """Hybrid search combines the strengths of keyword-based search with semantic search.
+        Keyword-based search like BM25 focuses on matching exact terms, while semantic search
         uses dense vector representations to capture the contextual meaning of terms in a query.""",
 
-        """Deep learning has revolutionized computer vision, enabling applications like image 
-        classification, object detection, and facial recognition. Convolutional neural networks 
-        (CNNs) are a common architecture used in these applications, designed specifically to 
+        """Deep learning has revolutionized computer vision, enabling applications like image
+        classification, object detection, and facial recognition. Convolutional neural networks
+        (CNNs) are a common architecture used in these applications, designed specifically to
         process grid-like data such as images."""
     ]
 
@@ -87,5 +87,5 @@ if __name__ == "__main__":
     query = "artificial intelligence and machine learning"
     results = keyword_search.search(query, top_n=3)
 
-    for score, doc, meta in results:
-        print(f"Score: {score:.2f}, Document: {doc}")
+    for _score, _doc, _meta in results:
+        pass

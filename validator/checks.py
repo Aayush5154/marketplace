@@ -17,7 +17,6 @@ from validator.helpers import (
     EMAIL_RE,
     EMOJI_RE,
     HANDLE_RE,
-    PHONE_RE,
     PRICE_RE,
     REPEATED_PUNCT_RE,
     URL_RE,
@@ -30,7 +29,6 @@ from validator.helpers import (
     result,
     similarity,
 )
-
 
 # ============================================================
 # 1. REQUIRED FIELDS
